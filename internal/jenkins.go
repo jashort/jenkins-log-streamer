@@ -49,6 +49,10 @@ func FetchLog(server ServerInfo, process func(data string) bool) {
 		if err != nil {
 			log.Fatal(err)
 		}
+		if resp.StatusCode != 200 {
+			fmt.Printf("%s %s\n", req.Method, req.URL)
+			log.Fatalf("Jenkins responded with status %d, expecting 200. Bad credentials?", resp.StatusCode)
+		}
 		defer func(Body io.ReadCloser) {
 			err := Body.Close()
 			if err != nil {
@@ -100,6 +104,10 @@ func getJson(server ServerInfo, target interface{}) error {
 		}
 	}(resp.Body)
 
+	if resp.StatusCode != 200 {
+		fmt.Printf("%s %s\n", req.Method, req.URL)
+		log.Fatalf("Jenkins responded with status %d, expecting 200. Bad credentials?", resp.StatusCode)
+	}
 	return json.NewDecoder(resp.Body).Decode(target)
 }
 
