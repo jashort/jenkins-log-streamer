@@ -32,7 +32,7 @@ func main() {
 		},
 		Action: func(cCtx *cli.Context) error {
 
-			jobStatus := jenkins.GetJobStatus(
+			jobStatus := jenkins.FetchJobStatus(
 				cCtx.String("url"),
 				cCtx.String("user"),
 				cCtx.String("token"))
@@ -41,6 +41,12 @@ func main() {
 			fmt.Printf("Result: %s\n", jobStatus.Result)
 			fmt.Printf("Building: %t\n", jobStatus.Building)
 			fmt.Printf("In Progress: %t\n\n", jobStatus.InProgress)
+
+			consoleLog, _ := jenkins.FetchLog(cCtx.String("url"),
+				cCtx.String("user"),
+				cCtx.String("token"))
+			println(consoleLog)
+
 			return nil
 		},
 	}

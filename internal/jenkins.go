@@ -1,8 +1,11 @@
 package jenkins
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -18,7 +21,11 @@ func jobStatusUrl(url string) string {
 	return url + "/lastBuild/api/json"
 }
 
-func GetJobStatus(url, user, token string) *JobStatus {
+func jobLogUrl(url string, start int64) string {
+	return fmt.Sprintf("%s/lastBuild/logText/progressiveText?start=%d", url, start)
+}
+
+func FetchJobStatus(url, user, token string) *JobStatus {
 	jobStatus := new(JobStatus)
 	statusUrl := jobStatusUrl(url)
 	err := getJson(statusUrl, user, token, jobStatus)
@@ -26,6 +33,32 @@ func GetJobStatus(url, user, token string) *JobStatus {
 		log.Fatal(err)
 	}
 	return jobStatus
+}
+
+func FetchLog(url, user, token string) (string, error) {
+	logUrl := jobLogUrl(url, 0)
+	client := &http.Client{Timeout: 10 * time.Second}
+	req, _ := http.NewRequest("GET", logUrl, nil)
+	req.Header.Add("Authorization", "Basic "+basicAuth(user, token))
+	resp, err := client.Do(req)
+
+	if err != nil {
+		return "", err
+	}
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			log.Fatal(err)
+		}
+	}(resp.Body)
+
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Split(bufio.ScanRunes)
+	var buf bytes.Buffer
+	for scanner.Scan() {
+		buf.WriteString(scanner.Text())
+	}
+	return buf.String(), nil
 }
 
 func getJson(url, user, token string, target interface{}) error {
