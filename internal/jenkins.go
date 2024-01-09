@@ -35,44 +35,38 @@ func FetchJobStatus(server ServerInfo) *JobStatus {
 	return jobStatus
 }
 
+func fetchLogChunk(server ServerInfo, position int64) *http.Response {
+	logUrl := jobLogUrl(server.URL, position)
+	client := &http.Client{Timeout: 10 * time.Second}
+	req, _ := http.NewRequest("GET", logUrl, nil)
+	req.Header.Add("Authorization", "Basic "+basicAuth(server.User, server.Token))
+	resp, err := client.Do(req)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+	if resp.StatusCode != 200 {
+		fmt.Printf("%s %s\n", req.Method, req.URL)
+		log.Fatalf("Jenkins responded with status %d, expecting 200. Bad credentials?", resp.StatusCode)
+	}
+	return resp
+}
+
 func FetchLog(server ServerInfo, process func(data string) bool) {
 
 	var position = int64(0)
 
 	for {
-		logUrl := jobLogUrl(server.URL, position)
-		client := &http.Client{Timeout: 10 * time.Second}
-		req, _ := http.NewRequest("GET", logUrl, nil)
-		req.Header.Add("Authorization", "Basic "+basicAuth(server.User, server.Token))
-		resp, err := client.Do(req)
+		resp := fetchLogChunk(server, position)
+		buf := processLogChunk(resp)
 
-		if err != nil {
-			log.Fatal(err)
-		}
-		if resp.StatusCode != 200 {
-			fmt.Printf("%s %s\n", req.Method, req.URL)
-			log.Fatalf("Jenkins responded with status %d, expecting 200. Bad credentials?", resp.StatusCode)
-		}
-		defer func(Body io.ReadCloser) {
-			err := Body.Close()
-			if err != nil {
-				log.Fatal(err)
-			}
-		}(resp.Body)
-
-		scanner := bufio.NewScanner(resp.Body)
-		scanner.Split(bufio.ScanRunes)
-		var buf bytes.Buffer
-		for scanner.Scan() {
-			buf.WriteString(scanner.Text())
+		if process(buf) {
+			break
 		}
 
 		moreData, err := strconv.ParseBool(resp.Header.Get("X-More-Data"))
 		if err != nil {
 			moreData = false
-		}
-		if process(buf.String()) {
-			break
 		}
 		if moreData == false {
 			println("No more data")
@@ -86,6 +80,23 @@ func FetchLog(server ServerInfo, process func(data string) bool) {
 		position = newPosition
 		time.Sleep(5 * time.Second)
 	}
+}
+
+func processLogChunk(resp *http.Response) string {
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			log.Fatal(err)
+		}
+	}(resp.Body)
+
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Split(bufio.ScanRunes)
+	var buf bytes.Buffer
+	for scanner.Scan() {
+		buf.WriteString(scanner.Text())
+	}
+	return buf.String()
 }
 
 func getJson(server ServerInfo, target interface{}) error {
