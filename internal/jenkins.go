@@ -26,25 +26,24 @@ func jobLogUrl(url string, start int64) string {
 	return fmt.Sprintf("%s/lastBuild/logText/progressiveText?start=%d", url, start)
 }
 
-func FetchJobStatus(url, user, token string) *JobStatus {
+func FetchJobStatus(server ServerInfo) *JobStatus {
 	jobStatus := new(JobStatus)
-	statusUrl := jobStatusUrl(url)
-	err := getJson(statusUrl, user, token, jobStatus)
+	err := getJson(server, jobStatus)
 	if err != nil {
 		log.Fatal(err)
 	}
 	return jobStatus
 }
 
-func FetchLog(url, user, token string, process func(data string) bool) {
+func FetchLog(server ServerInfo, process func(data string) bool) {
 
 	var position = int64(0)
 
 	for {
-		logUrl := jobLogUrl(url, position)
+		logUrl := jobLogUrl(server.URL, position)
 		client := &http.Client{Timeout: 10 * time.Second}
 		req, _ := http.NewRequest("GET", logUrl, nil)
-		req.Header.Add("Authorization", "Basic "+basicAuth(user, token))
+		req.Header.Add("Authorization", "Basic "+basicAuth(server.User, server.Token))
 		resp, err := client.Do(req)
 
 		if err != nil {
@@ -85,10 +84,10 @@ func FetchLog(url, user, token string, process func(data string) bool) {
 	}
 }
 
-func getJson(url, user, token string, target interface{}) error {
+func getJson(server ServerInfo, target interface{}) error {
 	client := &http.Client{Timeout: 10 * time.Second}
-	req, _ := http.NewRequest("GET", jobStatusUrl(url), nil)
-	req.Header.Add("Authorization", "Basic "+basicAuth(user, token))
+	req, _ := http.NewRequest("GET", jobStatusUrl(server.URL), nil)
+	req.Header.Add("Authorization", "Basic "+basicAuth(server.User, server.Token))
 	resp, err := client.Do(req)
 
 	if err != nil {
@@ -102,6 +101,12 @@ func getJson(url, user, token string, target interface{}) error {
 	}(resp.Body)
 
 	return json.NewDecoder(resp.Body).Decode(target)
+}
+
+type ServerInfo struct {
+	URL   string
+	User  string
+	Token string
 }
 
 type JobStatus struct {
