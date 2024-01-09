@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 )
 
@@ -35,30 +36,53 @@ func FetchJobStatus(url, user, token string) *JobStatus {
 	return jobStatus
 }
 
-func FetchLog(url, user, token string) (string, error) {
-	logUrl := jobLogUrl(url, 0)
-	client := &http.Client{Timeout: 10 * time.Second}
-	req, _ := http.NewRequest("GET", logUrl, nil)
-	req.Header.Add("Authorization", "Basic "+basicAuth(user, token))
-	resp, err := client.Do(req)
+func FetchLog(url, user, token string, process func(data string) bool) {
 
-	if err != nil {
-		return "", err
-	}
-	defer func(Body io.ReadCloser) {
-		err := Body.Close()
+	var position = int64(0)
+
+	for {
+		logUrl := jobLogUrl(url, position)
+		client := &http.Client{Timeout: 10 * time.Second}
+		req, _ := http.NewRequest("GET", logUrl, nil)
+		req.Header.Add("Authorization", "Basic "+basicAuth(user, token))
+		resp, err := client.Do(req)
+
 		if err != nil {
 			log.Fatal(err)
 		}
-	}(resp.Body)
+		defer func(Body io.ReadCloser) {
+			err := Body.Close()
+			if err != nil {
+				log.Fatal(err)
+			}
+		}(resp.Body)
 
-	scanner := bufio.NewScanner(resp.Body)
-	scanner.Split(bufio.ScanRunes)
-	var buf bytes.Buffer
-	for scanner.Scan() {
-		buf.WriteString(scanner.Text())
+		scanner := bufio.NewScanner(resp.Body)
+		scanner.Split(bufio.ScanRunes)
+		var buf bytes.Buffer
+		for scanner.Scan() {
+			buf.WriteString(scanner.Text())
+		}
+
+		moreData, err := strconv.ParseBool(resp.Header.Get("X-More-Data"))
+		if err != nil {
+			moreData = false
+		}
+		if process(buf.String()) {
+			break
+		}
+		if moreData == false {
+			println("No more data")
+			break
+		}
+
+		newPosition, err := strconv.ParseInt(resp.Header.Get("X-Text-Size"), 10, 64)
+		if err != nil {
+			log.Fatal(err)
+		}
+		position = newPosition
+		time.Sleep(5 * time.Second)
 	}
-	return buf.String(), nil
 }
 
 func getJson(url, user, token string, target interface{}) error {

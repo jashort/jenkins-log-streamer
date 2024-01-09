@@ -42,10 +42,17 @@ func main() {
 			fmt.Printf("Building: %t\n", jobStatus.Building)
 			fmt.Printf("In Progress: %t\n\n", jobStatus.InProgress)
 
-			consoleLog, _ := jenkins.FetchLog(cCtx.String("url"),
+			process := func(data string) bool {
+				if len(data) > 0 {
+					fmt.Print(data)
+				}
+				return false
+			}
+
+			jenkins.FetchLog(cCtx.String("url"),
 				cCtx.String("user"),
-				cCtx.String("token"))
-			println(consoleLog)
+				cCtx.String("token"),
+				process)
 
 			return nil
 		},
