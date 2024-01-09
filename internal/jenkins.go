@@ -1,11 +1,15 @@
 package jenkins
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 )
 
@@ -18,20 +22,87 @@ func jobStatusUrl(url string) string {
 	return url + "/lastBuild/api/json"
 }
 
-func GetJobStatus(url, user, token string) *JobStatus {
+func jobLogUrl(url string, start int64) string {
+	return fmt.Sprintf("%s/lastBuild/logText/progressiveText?start=%d", url, start)
+}
+
+func FetchJobStatus(server ServerInfo) *JobStatus {
 	jobStatus := new(JobStatus)
-	statusUrl := jobStatusUrl(url)
-	err := getJson(statusUrl, user, token, jobStatus)
+	err := getJson(server, jobStatus)
 	if err != nil {
 		log.Fatal(err)
 	}
 	return jobStatus
 }
 
-func getJson(url, user, token string, target interface{}) error {
+func fetchLogChunk(server ServerInfo, position int64) *http.Response {
+	logUrl := jobLogUrl(server.URL, position)
 	client := &http.Client{Timeout: 10 * time.Second}
-	req, _ := http.NewRequest("GET", jobStatusUrl(url), nil)
-	req.Header.Add("Authorization", "Basic "+basicAuth(user, token))
+	req, _ := http.NewRequest("GET", logUrl, nil)
+	req.Header.Add("Authorization", "Basic "+basicAuth(server.User, server.Token))
+	resp, err := client.Do(req)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+	if resp.StatusCode != 200 {
+		fmt.Printf("%s %s\n", req.Method, req.URL)
+		log.Fatalf("Jenkins responded with status %d, expecting 200. Bad credentials?", resp.StatusCode)
+	}
+	return resp
+}
+
+func FetchLog(server ServerInfo, process func(data string) bool) {
+
+	var position = int64(0)
+
+	for {
+		resp := fetchLogChunk(server, position)
+		buf := processLogChunk(resp)
+
+		if process(buf) {
+			break
+		}
+
+		moreData, err := strconv.ParseBool(resp.Header.Get("X-More-Data"))
+		if err != nil {
+			moreData = false
+		}
+		if moreData == false {
+			println("No more data")
+			break
+		}
+
+		newPosition, err := strconv.ParseInt(resp.Header.Get("X-Text-Size"), 10, 64)
+		if err != nil {
+			log.Fatal(err)
+		}
+		position = newPosition
+		time.Sleep(5 * time.Second)
+	}
+}
+
+func processLogChunk(resp *http.Response) string {
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			log.Fatal(err)
+		}
+	}(resp.Body)
+
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Split(bufio.ScanRunes)
+	var buf bytes.Buffer
+	for scanner.Scan() {
+		buf.WriteString(scanner.Text())
+	}
+	return buf.String()
+}
+
+func getJson(server ServerInfo, target interface{}) error {
+	client := &http.Client{Timeout: 10 * time.Second}
+	req, _ := http.NewRequest("GET", jobStatusUrl(server.URL), nil)
+	req.Header.Add("Authorization", "Basic "+basicAuth(server.User, server.Token))
 	resp, err := client.Do(req)
 
 	if err != nil {
@@ -44,7 +115,17 @@ func getJson(url, user, token string, target interface{}) error {
 		}
 	}(resp.Body)
 
+	if resp.StatusCode != 200 {
+		fmt.Printf("%s %s\n", req.Method, req.URL)
+		log.Fatalf("Jenkins responded with status %d, expecting 200. Bad credentials?", resp.StatusCode)
+	}
 	return json.NewDecoder(resp.Body).Decode(target)
+}
+
+type ServerInfo struct {
+	URL   string
+	User  string
+	Token string
 }
 
 type JobStatus struct {
