@@ -3,29 +3,46 @@ package main
 import (
 	"fmt"
 	tea "github.com/charmbracelet/bubbletea"
+	jenkins "github.com/jashort/jenkins-log-streamer/internal"
 	"github.com/urfave/cli/v2"
 	"log"
-	"net/http"
 	"os"
+	"strings"
 	"time"
 )
 
-const url = "https://httpbin.org/delay/3"
-
 type model struct {
-	url          string
-	user         string
-	token        string
-	jobStartTime int64
-	jobName      string
-	jobStatus    string
-	err          error
-	secondsLeft  int
+	jobStartTime    int64
+	jobName         string
+	jobStatus       string
+	err             error
+	job             jenkins.JobStatus
+	server          jenkins.ServerInfo
+	secondsLeft     int
+	currentBuildNum int
+	logPosition     int64
+	moreData        bool
+	logChunks       []logChunk
+	programLog      []string
+}
+
+type logChunk struct {
+	lineCount int
+	lines     []string
 }
 
 type jobStatusMsg struct {
 	name      string
 	startTime int64
+	buildNum  int
+}
+
+type jobLogMsg struct {
+	start       int64
+	body        string
+	moreData    bool
+	newPosition int64
+	buildNum    int
 }
 
 type errMsg struct{ err error }
@@ -35,7 +52,7 @@ type errMsg struct{ err error }
 func (e errMsg) Error() string { return e.err.Error() }
 
 func (m model) Init() tea.Cmd {
-	return tea.Batch(tick(), updateStatus(), tea.EnterAltScreen)
+	return tea.Batch(tick(), updateStatus(m.server), tea.EnterAltScreen)
 }
 
 func (m model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
@@ -49,11 +66,49 @@ func (m model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case jobStatusMsg:
 		m.jobStartTime = msg.startTime
 		m.jobName = msg.name
+		// If the latest build number has changed, clear the log
+		if m.currentBuildNum != msg.buildNum {
+			m.logChunks = nil
+			m.logPosition = 0
+			m.currentBuildNum = msg.buildNum
+			m.moreData = true
+		}
+
+		if m.moreData {
+			return m, updateLog(m.server, m.logPosition, m.currentBuildNum)
+		} else {
+			return m, nil
+		}
+
+	case jobLogMsg:
+		m.programLog = append(m.programLog, fmt.Sprintf("%#v", message))
+		if msg.buildNum == m.currentBuildNum {
+			if len(msg.body) != 0 {
+				lines := strings.Split(msg.body, "\n")
+				chunk := logChunk{
+					lineCount: len(lines),
+					lines:     lines,
+				}
+				m.logChunks = append(m.logChunks, chunk)
+			}
+
+			m.logPosition = msg.newPosition
+			m.moreData = msg.moreData
+			// moreData may mean "the log is finished but you're not at the last chunk" or it
+			// may mean "the job is still running but there's no new data in the log". In the second
+			// case, we don't want to immediately try to get more data, wait for updating the job
+			// status to trigger it
+			if msg.moreData && len(msg.body) > 0 {
+				return m, updateLog(m.server, msg.newPosition, msg.buildNum)
+			}
+		}
+		return m, nil
 
 	case tickMsg:
 		m.secondsLeft--
 		if m.secondsLeft <= 0 {
-			return m, tea.Quit
+			m.secondsLeft = 5
+			return m, tea.Batch(updateStatus(m.server), tick())
 		}
 		return m, tick()
 	}
@@ -61,22 +116,56 @@ func (m model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() string {
-	return fmt.Sprintf("%s %s\n%d\n\nSeconds left: %d", m.jobName, m.jobStatus, m.jobStartTime, m.secondsLeft)
+	//return strings.Join(m.programLog, "\n")
+	logChunk := ""
+	if len(m.logChunks) > 0 {
+		curChunk := m.logChunks[len(m.logChunks)-1]
+		start := 0
+		end := 0
+		if len(curChunk.lines) > 5 {
+			start = len(curChunk.lines) - 5
+			end = len(curChunk.lines)
+		} else {
+			end = len(curChunk.lines)
+		}
+		logChunk = strings.Join(curChunk.lines[start:end], "\n")
+	}
+	outFmt := `
+	"%s %s
+	StartTime: %d
+	Refresh in: %d	Log Position: %d More Data: %t
+	Log:
+	%s"
+	`
+	return fmt.Sprintf(outFmt, m.jobName, m.jobStatus, m.jobStartTime, m.secondsLeft, m.logPosition, m.moreData, logChunk)
 }
 
-func updateStatus() tea.Cmd {
+func updateStatus(server jenkins.ServerInfo) tea.Cmd {
 	return func() tea.Msg {
-		c := &http.Client{
-			Timeout: 10 * time.Second,
-		}
-		res, err := c.Get(url)
+		response, err := jenkins.FetchJobStatus(server)
 		if err != nil {
 			return errMsg{err}
 		}
-		defer res.Body.Close() // nolint:errcheck
+		x := jobStatusMsg{
+			name:      response.FullDisplayName,
+			startTime: response.Timestamp,
+			buildNum:  response.Number,
+		}
+		return tea.Msg(x)
+	}
+}
 
-		return tea.Msg(jobStatusMsg{name: "Test", startTime: 3})
-
+func updateLog(server jenkins.ServerInfo, start int64, jobNumber int) tea.Cmd {
+	return func() tea.Msg {
+		data := jenkins.FetchLog(server, start)
+		x := jobLogMsg{
+			body:        data.Body,
+			start:       start,
+			newPosition: data.NewPosition,
+			moreData:    data.MoreData,
+			buildNum:    jobNumber,
+		}
+		return tea.Msg(x)
 	}
 }
 
@@ -95,7 +184,7 @@ func main() {
 			&cli.StringFlag{
 				Name:  "url",
 				Value: "",
-				Usage: "Jenkins job `URL`",
+				Usage: "Jenkins job `Url`",
 			},
 			&cli.StringFlag{
 				Name:    "user",
@@ -112,13 +201,13 @@ func main() {
 		},
 		Action: func(cCtx *cli.Context) error {
 
-			//server := jenkins.ServerInfo{
-			//	URL:   cCtx.String("url"),
-			//	User:  cCtx.String("user"),
-			//	Token: cCtx.String("token"),
-			//}
+			server := jenkins.ServerInfo{
+				JobBaseUrl: cCtx.String("url"),
+				User:       cCtx.String("user"),
+				Token:      cCtx.String("token"),
+			}
 
-			p := tea.NewProgram(model{secondsLeft: 5}, tea.WithAltScreen(), tea.WithFPS(30))
+			p := tea.NewProgram(model{secondsLeft: 5, server: server}, tea.WithAltScreen())
 			if _, err := p.Run(); err != nil {
 				log.Fatal(err)
 			}

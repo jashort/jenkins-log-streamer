@@ -36,7 +36,7 @@ func FetchJobStatus(server ServerInfo) (*JobStatus, error) {
 }
 
 func fetchLogChunk(server ServerInfo, position int64) *http.Response {
-	logUrl := jobLogUrl(server.URL, position)
+	logUrl := jobLogUrl(server.JobBaseUrl, position)
 	client := &http.Client{Timeout: 10 * time.Second}
 	req, _ := http.NewRequest("GET", logUrl, nil)
 	req.Header.Add("Authorization", "Basic "+basicAuth(server.User, server.Token))
@@ -52,33 +52,33 @@ func fetchLogChunk(server ServerInfo, position int64) *http.Response {
 	return resp
 }
 
-func FetchLog(server ServerInfo, process func(data string) bool) {
+type LogChunk struct {
+	Body        string
+	BuildNumber int
+	Start       int64
+	MoreData    bool
+	NewPosition int64
+}
 
-	var position = int64(0)
+func FetchLog(server ServerInfo, start int64) LogChunk {
+	resp := fetchLogChunk(server, start)
+	buf := processLogChunk(resp)
 
-	for {
-		resp := fetchLogChunk(server, position)
-		buf := processLogChunk(resp)
+	moreData, err := strconv.ParseBool(resp.Header.Get("X-More-Data"))
+	if err != nil {
+		moreData = false
+	}
 
-		if process(buf) {
-			break
-		}
-
-		moreData, err := strconv.ParseBool(resp.Header.Get("X-More-Data"))
-		if err != nil {
-			moreData = false
-		}
-		if moreData == false {
-			println("No more data")
-			break
-		}
-
-		newPosition, err := strconv.ParseInt(resp.Header.Get("X-Text-Size"), 10, 64)
-		if err != nil {
-			log.Fatal(err)
-		}
-		position = newPosition
-		time.Sleep(5 * time.Second)
+	newPosition, err := strconv.ParseInt(resp.Header.Get("X-Text-Size"), 10, 64)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return LogChunk{
+		Body:        buf,
+		BuildNumber: 0,
+		Start:       start,
+		MoreData:    moreData,
+		NewPosition: newPosition,
 	}
 }
 
@@ -101,7 +101,7 @@ func processLogChunk(resp *http.Response) string {
 
 func getJson(server ServerInfo, target interface{}) error {
 	client := &http.Client{Timeout: 10 * time.Second}
-	req, _ := http.NewRequest("GET", jobStatusUrl(server.URL), nil)
+	req, _ := http.NewRequest("GET", jobStatusUrl(server.JobBaseUrl), nil)
 	req.Header.Add("Authorization", "Basic "+basicAuth(server.User, server.Token))
 	resp, err := client.Do(req)
 
@@ -123,9 +123,9 @@ func getJson(server ServerInfo, target interface{}) error {
 }
 
 type ServerInfo struct {
-	URL   string
-	User  string
-	Token string
+	JobBaseUrl string
+	User       string
+	Token      string
 }
 
 type JobStatus struct {
