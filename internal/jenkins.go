@@ -26,13 +26,13 @@ func jobLogUrl(url string, start int64) string {
 	return fmt.Sprintf("%s/lastBuild/logText/progressiveText?start=%d", url, start)
 }
 
-func FetchJobStatus(server ServerInfo) *JobStatus {
+func FetchJobStatus(server ServerInfo) (*JobStatus, error) {
 	jobStatus := new(JobStatus)
 	err := getJson(server, jobStatus)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
-	return jobStatus
+	return jobStatus, nil
 }
 
 func fetchLogChunk(server ServerInfo, position int64) *http.Response {
