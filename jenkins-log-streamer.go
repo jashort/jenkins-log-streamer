@@ -32,9 +32,11 @@ type logChunk struct {
 }
 
 type jobStatusMsg struct {
-	name      string
-	startTime int64
-	buildNum  int
+	name       string
+	startTime  int64
+	buildNum   int
+	inProgress bool
+	result     string
 }
 
 type jobLogMsg struct {
@@ -66,6 +68,14 @@ func (m model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case jobStatusMsg:
 		m.jobStartTime = msg.startTime
 		m.jobName = msg.name
+		if msg.result != "" {
+			m.jobStatus = msg.result
+		} else {
+			if msg.inProgress {
+				m.jobStatus = "In Progress"
+			}
+		}
+
 		// If the latest build number has changed, clear the log
 		if m.currentBuildNum != msg.buildNum {
 			m.logChunks = nil
@@ -117,27 +127,9 @@ func (m model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m model) View() string {
 	//return strings.Join(m.programLog, "\n")
-	logChunk := ""
-	if len(m.logChunks) > 0 {
-		curChunk := m.logChunks[len(m.logChunks)-1]
-		start := 0
-		end := 0
-		if len(curChunk.lines) > 5 {
-			start = len(curChunk.lines) - 5
-			end = len(curChunk.lines)
-		} else {
-			end = len(curChunk.lines)
-		}
-		logChunk = strings.Join(curChunk.lines[start:end], "\n")
-	}
-	outFmt := `
-	%s %s
-	StartTime: %d
-	Refresh in: %d	Log Position: %d More Data: %t
-	Log:
-	%s
-	`
-	return fmt.Sprintf(outFmt, m.jobName, m.jobStatus, m.jobStartTime, m.secondsLeft, m.logPosition, m.moreData, logChunk)
+	status := formatStatus(m)
+	logChunk := formatLog(m)
+	return fmt.Sprintf("%s\n%s", status, logChunk)
 }
 
 func updateStatus(server jenkins.ServerInfo) tea.Cmd {
@@ -147,9 +139,11 @@ func updateStatus(server jenkins.ServerInfo) tea.Cmd {
 			return errMsg{err}
 		}
 		x := jobStatusMsg{
-			name:      response.FullDisplayName,
-			startTime: response.Timestamp,
-			buildNum:  response.Number,
+			name:       response.FullDisplayName,
+			startTime:  response.Timestamp,
+			buildNum:   response.Number,
+			inProgress: response.InProgress,
+			result:     response.Result,
 		}
 		return tea.Msg(x)
 	}
@@ -176,6 +170,34 @@ func tick() tea.Cmd {
 }
 
 type tickMsg time.Time
+
+func formatLog(m model) string {
+	if len(m.logChunks) > 0 {
+		curChunk := m.logChunks[len(m.logChunks)-1]
+		start := 0
+		end := 0
+		if len(curChunk.lines) > 5 {
+			start = len(curChunk.lines) - 5
+			end = len(curChunk.lines)
+		} else {
+			end = len(curChunk.lines)
+		}
+		return strings.Join(curChunk.lines[start:end], "\n")
+	}
+	return ""
+}
+
+func formatStatus(m model) string {
+	statusLine := ""
+	if m.jobStatus != "" {
+		statusLine = "[" + m.jobStatus + "]"
+	}
+	startTime := time.UnixMilli(m.jobStartTime).Format(time.RFC822)
+	fmtLine := `%s %s (Started %s)
+Log Position: %d   More data: %t
+`
+	return fmt.Sprintf(fmtLine, m.jobName, statusLine, startTime, m.logPosition, m.moreData)
+}
 
 func main() {
 	app := &cli.App{
