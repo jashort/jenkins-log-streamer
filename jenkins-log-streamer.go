@@ -131,11 +131,11 @@ func (m model) View() string {
 		logChunk = strings.Join(curChunk.lines[start:end], "\n")
 	}
 	outFmt := `
-	"%s %s
+	%s %s
 	StartTime: %d
 	Refresh in: %d	Log Position: %d More Data: %t
 	Log:
-	%s"
+	%s
 	`
 	return fmt.Sprintf(outFmt, m.jobName, m.jobStatus, m.jobStartTime, m.secondsLeft, m.logPosition, m.moreData, logChunk)
 }
@@ -211,22 +211,6 @@ func main() {
 			if _, err := p.Run(); err != nil {
 				log.Fatal(err)
 			}
-			//	jobStatus := jenkins.FetchJobStatus(server)
-			//	fmt.Printf("Name: %s\n", jobStatus.FullDisplayName)
-			//	fmt.Printf("Start time: %d\n", jobStatus.Timestamp)
-			//	fmt.Printf("Result: %s\n", jobStatus.Result)
-			//	fmt.Printf("Building: %t\n", jobStatus.Building)
-			//	fmt.Printf("In Progress: %t\n\n", jobStatus.InProgress)
-			//
-			//	process := func(data string) bool {
-			//		if len(data) > 0 {
-			//			fmt.Print(data)
-			//		}
-			//		return false
-			//	}
-			//
-			//	jenkins.FetchLog(server, process)
-			//
 			return nil
 		},
 	}
