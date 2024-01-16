@@ -15,13 +15,13 @@ import (
 
 var (
 	titleStyle = func() lipgloss.Style {
-		b := lipgloss.RoundedBorder()
+		b := lipgloss.NormalBorder()
 		b.Right = "├"
 		return lipgloss.NewStyle().BorderStyle(b).Padding(0, 1)
 	}()
 
 	infoStyle = func() lipgloss.Style {
-		b := lipgloss.RoundedBorder()
+		b := lipgloss.NormalBorder()
 		b.Left = "┤"
 		return titleStyle.Copy().BorderStyle(b)
 	}()
@@ -53,9 +53,10 @@ func (m model) headerView() string {
 		statusLine = "[" + m.jobStatus + "]"
 	}
 	startTime := time.UnixMilli(m.jobStartTime).Format(time.RFC822)
-	fmtLine := `%s %s (Started %s)
-Log Position: %d   More data: %t    Refresh in: %d`
-	title := titleStyle.Render(fmt.Sprintf(fmtLine, m.jobName, statusLine, startTime, m.logPosition, m.moreData, m.secondsLeft))
+	fmtLine := "%s %s (Started %s)"
+	//Log Position: %d   More data: %t    Refresh in: %d`
+
+	title := titleStyle.Render(fmt.Sprintf(fmtLine, m.jobName, statusLine, startTime))
 	line := strings.Repeat("─", max(0, m.viewport.Width-lipgloss.Width(title)))
 	return lipgloss.JoinHorizontal(lipgloss.Center, title, line)
 }
