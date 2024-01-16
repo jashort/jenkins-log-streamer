@@ -4,12 +4,27 @@ import (
 	"fmt"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	jenkins "github.com/jashort/jenkins-log-streamer/internal"
 	"github.com/urfave/cli/v2"
 	"log"
 	"os"
 	"strings"
 	"time"
+)
+
+var (
+	titleStyle = func() lipgloss.Style {
+		b := lipgloss.RoundedBorder()
+		b.Right = "├"
+		return lipgloss.NewStyle().BorderStyle(b).Padding(0, 1)
+	}()
+
+	infoStyle = func() lipgloss.Style {
+		b := lipgloss.RoundedBorder()
+		b.Left = "┤"
+		return titleStyle.Copy().BorderStyle(b)
+	}()
 )
 
 type model struct {
@@ -29,6 +44,41 @@ type model struct {
 	logPosition     int64
 	moreData        bool
 	logChunks       []logChunk
+}
+
+func (m model) headerView() string {
+	statusLine := ""
+	if m.jobStatus != "" {
+		statusLine = "[" + m.jobStatus + "]"
+	}
+	startTime := time.UnixMilli(m.jobStartTime).Format(time.RFC822)
+	fmtLine := `%s %s (Started %s)
+Log Position: %d   More data: %t    Refresh in: %d`
+	title := titleStyle.Render(fmt.Sprintf(fmtLine, m.jobName, statusLine, startTime, m.logPosition, m.moreData, m.secondsLeft))
+	line := strings.Repeat("─", max(0, m.viewport.Width-lipgloss.Width(title)))
+	return lipgloss.JoinHorizontal(lipgloss.Center, title, line)
+}
+
+func logView(m model) string {
+	if len(m.logChunks) > 0 {
+		curChunk := m.logChunks[len(m.logChunks)-1]
+		start := 0
+		end := 0
+		if len(curChunk.lines) > m.viewport.Height-4 {
+			start = len(curChunk.lines) - 5
+			end = len(curChunk.lines)
+		} else {
+			end = len(curChunk.lines)
+		}
+		return strings.Join(curChunk.lines[start:end], "\n")
+	}
+	return ""
+}
+
+func (m model) footerView() string {
+	info := infoStyle.Render(fmt.Sprintf("%3.f%%", m.viewport.ScrollPercent()*100))
+	line := strings.Repeat("─", max(0, m.viewport.Width-lipgloss.Width(info)))
+	return lipgloss.JoinHorizontal(lipgloss.Center, line, info)
 }
 
 type logChunk struct {
@@ -54,8 +104,6 @@ type jobLogMsg struct {
 
 type errMsg struct{ err error }
 
-// For messages that contain errors it's often handy to also implement the
-// error interface on the message.
 func (e errMsg) Error() string { return e.err.Error() }
 
 func (m model) Init() tea.Cmd {
@@ -63,8 +111,12 @@ func (m model) Init() tea.Cmd {
 }
 
 func (m model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
+	var (
+		cmd  tea.Cmd
+		cmds []tea.Cmd
+	)
 	if m.debug {
-		log.Println(fmt.Sprintf("(%T): %s", message, message))
+		log.Println(fmt.Sprintf("(%T): %s\n", message, message))
 	}
 	switch msg := message.(type) {
 	case tea.KeyMsg:
@@ -72,6 +124,25 @@ func (m model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "esc", "ctrl+c":
 			return m, tea.Quit
 		}
+
+	case tea.WindowSizeMsg:
+		headerHeight := lipgloss.Height(m.headerView())
+		footerHeight := lipgloss.Height(m.footerView())
+		verticalMarginHeight := headerHeight + footerHeight
+
+		if !m.ready {
+			m.viewport = viewport.New(msg.Width, msg.Height-verticalMarginHeight)
+			m.viewport.YPosition = headerHeight
+			m.viewport.SetContent("")
+			m.ready = true
+			m.viewport.YPosition = headerHeight + 1
+		} else {
+			m.viewport.Width = msg.Width
+			m.viewport.Height = msg.Height - verticalMarginHeight
+		}
+
+		m.viewport, cmd = m.viewport.Update(msg)
+		cmds = append(cmds, cmd)
 
 	case jobStatusMsg:
 		m.jobStartTime = msg.startTime
@@ -111,7 +182,7 @@ func (m model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 
 			m.logPosition = msg.newPosition
 			m.moreData = msg.moreData
-			// moreData may mean "the log is finished but you're not at the last chunk" or it
+			// moreData may mean "the log is finished, but you're not at the last chunk" or it
 			// may mean "the job is still running but there's no new data in the log". In the second
 			// case, we don't want to immediately try to get more data, wait for updating the job
 			// status to trigger it
@@ -129,14 +200,19 @@ func (m model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, tick()
 	}
-	return m, nil
+
+	m.viewport, cmd = m.viewport.Update(message)
+	cmds = append(cmds, cmd)
+
+	return m, tea.Batch(cmds...)
 }
 
 func (m model) View() string {
-	//return strings.Join(m.programLog, "\n")
-	status := formatStatus(m)
-	logChunk := formatLog(m)
-	return fmt.Sprintf("%s\n%s", status, logChunk)
+	if !m.ready {
+		return "\n  Initializing..."
+	}
+
+	return fmt.Sprintf("%s\n%s\n%s", m.headerView(), logView(m), m.footerView())
 }
 
 func updateStatus(server jenkins.ServerInfo) tea.Cmd {
@@ -177,34 +253,6 @@ func tick() tea.Cmd {
 }
 
 type tickMsg time.Time
-
-func formatLog(m model) string {
-	if len(m.logChunks) > 0 {
-		curChunk := m.logChunks[len(m.logChunks)-1]
-		start := 0
-		end := 0
-		if len(curChunk.lines) > 5 {
-			start = len(curChunk.lines) - 5
-			end = len(curChunk.lines)
-		} else {
-			end = len(curChunk.lines)
-		}
-		return strings.Join(curChunk.lines[start:end], "\n")
-	}
-	return ""
-}
-
-func formatStatus(m model) string {
-	statusLine := ""
-	if m.jobStatus != "" {
-		statusLine = "[" + m.jobStatus + "]"
-	}
-	startTime := time.UnixMilli(m.jobStartTime).Format(time.RFC822)
-	fmtLine := `%s %s (Started %s)
-Log Position: %d   More data: %t
-`
-	return fmt.Sprintf(fmtLine, m.jobName, statusLine, startTime, m.logPosition, m.moreData)
-}
 
 func main() {
 	app := &cli.App{
@@ -248,7 +296,11 @@ func main() {
 				Token:      cCtx.String("token"),
 			}
 
-			p := tea.NewProgram(model{secondsLeft: 5, server: server, debug: debugMode}, tea.WithAltScreen())
+			p := tea.NewProgram(
+				model{secondsLeft: 5, server: server, debug: debugMode},
+				tea.WithAltScreen(),
+				tea.WithMouseCellMotion(),
+			)
 			if _, err := p.Run(); err != nil {
 				log.Fatal(err)
 			}
