@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	jenkins "github.com/jashort/jenkins-log-streamer/internal"
 	"github.com/urfave/cli/v2"
@@ -12,18 +13,22 @@ import (
 )
 
 type model struct {
+	// Program state
+	server   jenkins.ServerInfo
+	ready    bool
+	viewport viewport.Model
+	debug    bool
+	// Jenkins job state
 	jobStartTime    int64
 	jobName         string
 	jobStatus       string
 	err             error
 	job             jenkins.JobStatus
-	server          jenkins.ServerInfo
 	secondsLeft     int
 	currentBuildNum int
 	logPosition     int64
 	moreData        bool
 	logChunks       []logChunk
-	programLog      []string
 }
 
 type logChunk struct {
@@ -58,6 +63,9 @@ func (m model) Init() tea.Cmd {
 }
 
 func (m model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
+	if m.debug {
+		log.Println(fmt.Sprintf("(%T): %s", message, message))
+	}
 	switch msg := message.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -91,7 +99,6 @@ func (m model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case jobLogMsg:
-		m.programLog = append(m.programLog, fmt.Sprintf("%#v", message))
 		if msg.buildNum == m.currentBuildNum {
 			if len(msg.body) != 0 {
 				lines := strings.Split(msg.body, "\n")
@@ -220,16 +227,28 @@ func main() {
 				Usage:   "Jenkins API token",
 				EnvVars: []string{"JENKINS_TOKEN"},
 			},
+			&cli.StringFlag{
+				Name:    "log",
+				Value:   "",
+				Usage:   "Log debugging information to filename",
+				EnvVars: []string{"JLS_LOG"},
+			},
 		},
 		Action: func(cCtx *cli.Context) error {
-
+			debugMode := false
+			if cCtx.String("log") != "" {
+				if _, err := tea.LogToFile(cCtx.String("log"), ""); err != nil {
+					log.Fatal(err)
+				}
+				debugMode = true
+			}
 			server := jenkins.ServerInfo{
 				JobBaseUrl: cCtx.String("url"),
 				User:       cCtx.String("user"),
 				Token:      cCtx.String("token"),
 			}
 
-			p := tea.NewProgram(model{secondsLeft: 5, server: server}, tea.WithAltScreen())
+			p := tea.NewProgram(model{secondsLeft: 5, server: server, debug: debugMode}, tea.WithAltScreen())
 			if _, err := p.Run(); err != nil {
 				log.Fatal(err)
 			}
