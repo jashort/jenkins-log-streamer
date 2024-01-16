@@ -32,6 +32,7 @@ type model struct {
 	server   jenkins.ServerInfo
 	ready    bool
 	viewport viewport.Model
+	content  string
 	debug    bool
 	// Jenkins job state
 	jobStartTime    int64
@@ -133,7 +134,7 @@ func (m model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if !m.ready {
 			m.viewport = viewport.New(msg.Width, msg.Height-verticalMarginHeight)
 			m.viewport.YPosition = headerHeight
-			m.viewport.SetContent("")
+			m.viewport.SetContent(m.content)
 			m.ready = true
 			m.viewport.YPosition = headerHeight + 1
 		} else {
@@ -161,6 +162,7 @@ func (m model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.logPosition = 0
 			m.currentBuildNum = msg.buildNum
 			m.moreData = true
+			m.content = ""
 		}
 
 		if m.moreData {
@@ -172,12 +174,18 @@ func (m model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case jobLogMsg:
 		if msg.buildNum == m.currentBuildNum {
 			if len(msg.body) != 0 {
+				shouldScroll := m.viewport.AtBottom()
 				lines := strings.Split(msg.body, "\n")
 				chunk := logChunk{
 					lineCount: len(lines),
 					lines:     lines,
 				}
 				m.logChunks = append(m.logChunks, chunk)
+				m.content += msg.body
+				m.viewport.SetContent(m.content)
+				if shouldScroll {
+					m.viewport.GotoBottom()
+				}
 			}
 
 			m.logPosition = msg.newPosition
@@ -212,7 +220,7 @@ func (m model) View() string {
 		return "\n  Initializing..."
 	}
 
-	return fmt.Sprintf("%s\n%s\n%s", m.headerView(), logView(m), m.footerView())
+	return fmt.Sprintf("%s\n%s\n%s", m.headerView(), m.viewport.View(), m.footerView())
 }
 
 func updateStatus(server jenkins.ServerInfo) tea.Cmd {
