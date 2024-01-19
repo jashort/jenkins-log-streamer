@@ -61,24 +61,8 @@ func (m model) headerView() string {
 	return lipgloss.JoinHorizontal(lipgloss.Center, title, line)
 }
 
-func logView(m model) string {
-	if len(m.logChunks) > 0 {
-		curChunk := m.logChunks[len(m.logChunks)-1]
-		start := 0
-		end := 0
-		if len(curChunk.lines) > m.viewport.Height-4 {
-			start = len(curChunk.lines) - 5
-			end = len(curChunk.lines)
-		} else {
-			end = len(curChunk.lines)
-		}
-		return strings.Join(curChunk.lines[start:end], "\n")
-	}
-	return ""
-}
-
 func (m model) footerView() string {
-	info := infoStyle.Render(fmt.Sprintf("%3.f%%", m.viewport.ScrollPercent()*100))
+	info := infoStyle.Render(fmt.Sprintf("Refresh in %d        %3.f%%", m.secondsLeft, m.viewport.ScrollPercent()*100))
 	line := strings.Repeat("─", max(0, m.viewport.Width-lipgloss.Width(info)))
 	return lipgloss.JoinHorizontal(lipgloss.Center, line, info)
 }
