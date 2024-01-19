@@ -292,7 +292,6 @@ func main() {
 			p := tea.NewProgram(
 				model{secondsLeft: 5, server: server, debug: debugMode},
 				tea.WithAltScreen(),
-				tea.WithMouseCellMotion(),
 			)
 			if _, err := p.Run(); err != nil {
 				log.Fatal(err)
