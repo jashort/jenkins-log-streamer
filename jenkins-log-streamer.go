@@ -2,10 +2,10 @@ package main
 
 import (
 	"fmt"
-	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	jenkins "github.com/jashort/jenkins-log-streamer/internal"
+	"github.com/jashort/jenkins-log-streamer/internal/jlsviewport"
 	"github.com/urfave/cli/v2"
 	"log"
 	"os"
@@ -31,7 +31,7 @@ type model struct {
 	// Program state
 	server   jenkins.ServerInfo
 	ready    bool
-	viewport viewport.Model
+	viewport jlsviewport.Model
 	content  string
 	debug    bool
 	// Jenkins job state
@@ -117,7 +117,7 @@ func (m model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		verticalMarginHeight := headerHeight + footerHeight
 
 		if !m.ready {
-			m.viewport = viewport.New(msg.Width, msg.Height-verticalMarginHeight)
+			m.viewport = jlsviewport.New(msg.Width, msg.Height-verticalMarginHeight)
 			m.viewport.YPosition = headerHeight
 			m.viewport.SetContent(m.content)
 			m.ready = true
