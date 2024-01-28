@@ -9,6 +9,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// This is a copy of
+
 // New returns a new model with the given width and height as well as default
 // key mappings.
 func New(width, height int) (m Model) {
@@ -372,14 +374,13 @@ func (m Model) View() string {
 	}
 	contentWidth := w - m.Style.GetHorizontalFrameSize()
 	contentHeight := h - m.Style.GetVerticalFrameSize()
-	contents := lipgloss.NewStyle().
+
+	return lipgloss.NewStyle().
 		Height(contentHeight).    // pad to height.
 		MaxHeight(contentHeight). // truncate height if taller.
-		MaxWidth(contentWidth).   // truncate width.
+		Width(contentWidth).      // wrap lines, don't truncate width.
 		Render(strings.Join(m.visibleLines(), "\n"))
-	return m.Style.Copy().
-		UnsetWidth().UnsetHeight(). // Style size already applied in contents.
-		Render(contents)
+
 }
 
 func clamp(v, low, high int) int {
