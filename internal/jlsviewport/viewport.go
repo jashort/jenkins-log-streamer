@@ -1,6 +1,7 @@
 package jlsviewport
 
 import (
+	"github.com/jashort/jenkins-log-streamer/internal/text/wrap"
 	"math"
 	"strings"
 
@@ -375,11 +376,27 @@ func (m Model) View() string {
 	contentWidth := w - m.Style.GetHorizontalFrameSize()
 	contentHeight := h - m.Style.GetVerticalFrameSize()
 
+	lines := make([]string, 1)
+
+	for _, line := range m.visibleLines() {
+		//f := wordwrap.NewWriter(contentWidth)
+		//f.IndentWrapped = 4
+		//_, _ = f.Write([]byte(line))
+		//_ = f.Close()
+
+		g := wrap.NewWriter(contentWidth)
+		g.IndentWrapped = 4
+		g.PreserveSpace = false
+		_, _ = g.Write([]byte(line))
+
+		lines = append(lines, g.String())
+	}
+
 	return lipgloss.NewStyle().
 		Height(contentHeight).    // pad to height.
 		MaxHeight(contentHeight). // truncate height if taller.
 		Width(contentWidth).      // wrap lines, don't truncate width.
-		Render(strings.Join(m.visibleLines(), "\n"))
+		Render(strings.Join(lines, "\n"))
 
 }
 
