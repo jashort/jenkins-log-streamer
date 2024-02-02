@@ -19,3 +19,11 @@ GLOBAL OPTIONS:
    --token value  Jenkins API token [$JENKINS_TOKEN]
    --help, -h     show help
 ```
+
+## Keyboard Shortcuts
+
+- `g`/`Home`: Go to top
+- `G`/`End`: Go to bottom
+- `q`/`Escape`: Quit
+
+While at the bottom, the log will automatically scroll for new data. Otherwise, it will stay at the current position.

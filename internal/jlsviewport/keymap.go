@@ -1,6 +1,8 @@
 package jlsviewport
 
-import "github.com/charmbracelet/bubbles/key"
+import (
+	"github.com/charmbracelet/bubbles/key"
+)
 
 const spacebar = " "
 
@@ -15,6 +17,8 @@ type KeyMap struct {
 	HalfPageDown key.Binding
 	Down         key.Binding
 	Up           key.Binding
+	GotoTop      key.Binding
+	GotoBottom   key.Binding
 }
 
 // DefaultKeyMap returns a set of pager-like default keybindings.
@@ -44,5 +48,12 @@ func DefaultKeyMap() KeyMap {
 			key.WithKeys("down", "j"),
 			key.WithHelp("↓/j", "down"),
 		),
+		GotoTop: key.NewBinding(
+			key.WithKeys("home", "g"),
+			key.WithHelp("g/home", "go to top"),
+		),
+		GotoBottom: key.NewBinding(
+			key.WithKeys("end", "G"),
+			key.WithHelp("G/end", "go to bottom")),
 	}
 }

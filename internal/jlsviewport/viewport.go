@@ -331,6 +331,12 @@ func (m Model) updateAsModel(msg tea.Msg) (Model, tea.Cmd) {
 			if m.HighPerformanceRendering {
 				cmd = ViewUp(m, lines)
 			}
+
+		case key.Matches(msg, m.KeyMap.GotoTop):
+			m.GotoTop()
+
+		case key.Matches(msg, m.KeyMap.GotoBottom):
+			m.GotoBottom()
 		}
 
 	case tea.MouseMsg:
