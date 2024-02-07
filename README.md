@@ -21,9 +21,14 @@ GLOBAL OPTIONS:
 ```
 
 ## Keyboard Shortcuts
-
+- `Page Down`/`f`/`space`: Page down
+- `Page Up`/`b`: Page up
+- `u`/`ctrl+u`: Half page up
+- `d`/`ctrl+d`: Half page down
+- `up`/`k`: Scroll up
+- `down`/`j`: Scroll down
 - `g`/`Home`: Go to top
 - `G`/`End`: Go to bottom
-- `q`/`Escape`: Quit
+- `q`/`Escape`/`ctrl+c`: Quit
 
 While at the bottom, the log will automatically scroll for new data. Otherwise, it will stay at the current position.
