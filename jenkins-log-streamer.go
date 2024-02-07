@@ -288,7 +288,9 @@ func main() {
 				User:       cCtx.String("user"),
 				Token:      cCtx.String("token"),
 			}
-
+			if server.JobBaseUrl == "" {
+				log.Fatal("Error: jenkins URL not specified. Use --url option")
+			}
 			p := tea.NewProgram(
 				model{secondsLeft: 5, server: server, debug: debugMode},
 				tea.WithAltScreen(),
