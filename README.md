@@ -9,8 +9,16 @@ Features:
 
 https://github.com/jashort/jenkins-log-streamer/assets/1596580/c70ca911-76ab-468f-aea6-648898106265
 
+## Installation
+
+Download the appropriate binary for your operating system from https://github.com/jashort/jenkins-log-streamer/releases 
+and place it in the path.
 
 ## Usage
+
+```shell
+jenkins-log-streamer --url https://jenkins.example.com/job/YourProject/ --user YOUR_USERNAME --token YOUR_TOKEN
+```
 
 Parameters:
 
