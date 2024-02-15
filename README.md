@@ -5,7 +5,7 @@ Features:
 - Shows logs from the latest build, even when a new build starts
 - Scrolls automatically if the log is at the bottom
 - Scroll forward and back through the log in the terminal with arrow keys or page up/page down
-- Supports scrolling with the mouse wheel if your terminal does (tested in (iTerm2)[https://iterm2.com/])
+- Supports scrolling with the mouse wheel if your terminal does (tested in [iTerm2](https://iterm2.com/))
 
 https://github.com/jashort/jenkins-log-streamer/assets/1596580/c70ca911-76ab-468f-aea6-648898106265
 
